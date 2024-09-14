@@ -10,10 +10,10 @@
 
 #define STD_PORT 8080
 
-#define PORT_ERROR -1
-#define SOCKET_ERROR -2
-#define BIND_ERROR -3
-#define LISTEN_ERROR -4
+#define PORT_ERROR 1
+#define SOCKET_ERROR 2
+#define BIND_ERROR 3
+#define LISTEN_ERROR 4
 
 typedef struct
 {
@@ -86,7 +86,7 @@ void * process(void * ptr)
                        (int)((addr >> 24) &0xff),
                        type->valuestring, content->valuestring);
 
-                /* create an answear message */
+                /* create a response message */
                 cJSON *response = cJSON_CreateObject();
                 cJSON_AddStringToObject(response, "type", "response");
                 cJSON_AddStringToObject(response, "content", "received successfully");
@@ -130,7 +130,7 @@ int main(int argc, char ** argv)
     connection_t *connection;
     pthread_t thread;
 
-    /* verificar los argumentos de la línea de comandos */
+    /* check commandline */
     if (argc == 2)
     {
         if (sscanf(argv[1], "%d", &port) <= 0)
