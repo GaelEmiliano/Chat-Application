@@ -10,6 +10,11 @@
 
 #define STD_PORT 8080
 
+#define PORT_ERROR -1
+#define SOCKET_ERROR -2
+#define BIND_ERROR -3
+#define LISTEN_ERROR -4
+
 typedef struct
 {
     int sock;
@@ -29,7 +34,7 @@ void * process(void * ptr)
     
     conn = (connection_t *)ptr;
 
-    /* leer el tamaño del mensaje */
+    /* read length of the message */
     read(conn->sock, &len, sizeof(int));
     if (len > 0)
     {
@@ -37,14 +42,14 @@ void * process(void * ptr)
         buffer = (char *)malloc((len + 1) * sizeof(char));
         buffer[len] = 0;
 
-        /* leer el mensaje */
+        /* read the message */
         read(conn->sock, buffer, len);
 
         /* Parsear el mensaje JSON recibido */
         cJSON *json_message = cJSON_Parse(buffer);
         if (json_message == NULL)
         {
-            printf("Error al parsear el JSON del cliente\n");
+            printf("error: error parsing client message\n");
         }
         else
         {
@@ -53,43 +58,43 @@ void * process(void * ptr)
 
             if (type && content)
             {
-                printf("Mensaje recibido de %d.%d.%d.%d: Tipo: %s, Contenido: %s\n",
+                printf("message from: %d.%d.%d.%d: Type: %s, Content: %s\n",
                        (int)((addr) &0xff),
                        (int)((addr >> 8) &0xff),
                        (int)((addr >> 16) &0xff),
                        (int)((addr >> 24) &0xff),
                        type->valuestring, content->valuestring);
 
-                /* Crear una respuesta en formato JSON */
+                /* create an answear message */
                 cJSON *response = cJSON_CreateObject();
                 cJSON_AddStringToObject(response, "type", "response");
-                cJSON_AddStringToObject(response, "content", "Mensaje recibido con éxito");
+                cJSON_AddStringToObject(response, "content", "received successfully");
 
-                /* Convertir el JSON a una cadena */
+                /* convert JSON response to string */
                 char *json_response = cJSON_Print(response);
                 int response_len = strlen(json_response);
 
-                /* Enviar la respuesta al cliente */
+                /* send response to the client */
                 write(conn->sock, &response_len, sizeof(int));
                 write(conn->sock, json_response, response_len);
 
-                /* Limpiar la memoria usada */
+                /* clear used memory */
                 cJSON_Delete(response);
                 free(json_response);
             }
             else
             {
-                printf("Mensaje JSON incompleto\n");
+                printf("incomplete json message\n");
             }
 
-            /* Liberar memoria usada por el JSON recibido */
+            /* clear memory used by JSON */
             cJSON_Delete(json_message);
         }
 
         free(buffer);
     }
 
-    /* Cerrar el socket y limpiar */
+    /* clear and close socket */
     close(conn->sock);
     free(conn);
     pthread_exit(0);
@@ -109,7 +114,7 @@ int main(int argc, char ** argv)
         if (sscanf(argv[1], "%d", &port) <= 0)
         {                            
             fprintf(stderr, "%s: error: wrong parameter: port\n", argv[0]);
-            return -1;
+            return PORT_ERROR;
         }
     }
     else
@@ -123,7 +128,7 @@ int main(int argc, char ** argv)
     if (sock <= 0)
     {
         fprintf(stderr, "%s: error: cannot create socket\n", argv[0]);
-        return -2;
+        return SOCKET_ERROR;
     }
 
     /* bind socket to the port */
@@ -133,14 +138,14 @@ int main(int argc, char ** argv)
     if (bind(sock, (struct sockaddr *)&address, sizeof(struct sockaddr_in)) < 0)
     {
         fprintf(stderr, "%s: error: cannot bind socket to port %d\n", argv[0], port);
-        return -3;
+        return BIND_ERROR;
     }
 
     /* listen to port */
     if (listen(sock, 5) < 0)
     {
         fprintf(stderr, "%s: error: cannot listen on port\n", argv[0]);
-        return -4;
+        return LISTEN_ERROR;
     }
 
     printf("%s: ready and listening\n", argv[0]);

@@ -7,6 +7,9 @@
 #include <stdlib.h>
 #include "cJSON.h"
 
+#define USAGE_ERROR -1
+#define SOCKET_ERROR -2
+
 int main(int argc, char ** argv)
 {
     int port;
@@ -19,15 +22,15 @@ int main(int argc, char ** argv)
     /* checking commandline parameter */
     if (argc != 4)
     {
-        printf("usage: %s hostname port text\n", argv[0]);
-        return -1;
+        printf("usage: %s | hostname | port | text\n", argv[0]);
+        return USAGE_ERROR;
     }
 
     /* obtain port number */
     if (sscanf(argv[2], "%d", &port) <= 0)
     {
-        fprintf(stderr, "%s: error: wrong parameter: port\n", argv[0]);
-        return -2;
+        fprintf(stderr, "%s: error: wrong argument: port\n", argv[0]);
+        return USAGE_ERROR;
     }
 
     /* create socket */
@@ -35,7 +38,7 @@ int main(int argc, char ** argv)
     if (sock <= 0)
     {
         fprintf(stderr, "%s: error: cannot create socket\n", argv[0]);
-        return -3;
+        return SOCKET_ERROR;
     }
 
     /* connect to server */
@@ -45,38 +48,38 @@ int main(int argc, char ** argv)
     if (!host)
     {
         fprintf(stderr, "%s: error: unknown host %s\n", argv[0], argv[1]);
-        return -4;
+        return HOST_NOT_FOUND;
     }
     memcpy(&address.sin_addr, host->h_addr_list[0], host->h_length);
     if (connect(sock, (struct sockaddr *)&address, sizeof(address)))
     {
         fprintf(stderr, "%s: error: cannot connect to host %s\n", argv[0], argv[1]);
-        return -5;
+        return HOST_NOT_FOUND;
     }
 
-    /* Crear el objeto JSON con el mensaje */
+    /* new object JSON */
     cJSON *root = cJSON_CreateObject();
     cJSON_AddStringToObject(root, "type", "message");
     cJSON_AddStringToObject(root, "content", argv[3]);
 
-    /* Convertir el objeto JSON a una cadena de texto */
+    /* convert JSON to string */
     char *json_string = cJSON_Print(root);
     len = strlen(json_string);
 
     /* send JSON to server */
     write(sock, &len, sizeof(int));  
-    write(sock, json_string, len);   // Send JSON
+    write(sock, json_string, len);   // send JSON
 
-    /* Limpiar memoria usada por cJSON */
+    /* clear memory used by cJSON */
     cJSON_Delete(root);
     free(json_string);
 
-    /* read server answear */
+    /* read server response */
     read(sock, &len, sizeof(int));      
     read(sock, buffer, len);               
     buffer[len] = '\0';
 
-    /* Parsear la respuesta JSON */
+    /* parse JSON response */
     cJSON *response = cJSON_Parse(buffer);
     if (response == NULL)
     {
@@ -89,12 +92,12 @@ int main(int argc, char ** argv)
 
         if (response_type && response_content)
         {
-            printf("Server Answear: Type: %s, Content: %s\n",
+            printf("server response: Type: %s, Content: %s\n",
                    response_type->valuestring, response_content->valuestring);
         }
         else
         {
-            printf("invalid JSON answear\n");
+            printf("invalid JSON response\n");
         }
 
         /* clear memory */
