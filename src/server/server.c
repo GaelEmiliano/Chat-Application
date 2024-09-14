@@ -19,14 +19,14 @@ typedef struct
 {
     int sock;
     struct sockaddr address;
-    int addr_len;
+    socklen_t addr_len;
 } connection_t;
 
 void * process(void * ptr)
 {
     char * buffer;
     int len;
-    connection_t *conn;
+    connection_t * conn;
     long addr = 0;
 
     if (!ptr)
@@ -35,17 +35,38 @@ void * process(void * ptr)
     conn = (connection_t *)ptr;
 
     /* read length of the message */
-    read(conn->sock, &len, sizeof(int));
+    if (read(conn->sock, &len, sizeof(int)) <= 0)
+    {
+        printf("error: error reading from socket failed\n");
+        close(conn->sock);
+        free(conn);
+        pthread_exit(0);
+    }
+    
     if (len > 0)
     {
         addr = (long)((struct sockaddr_in *)&conn->address)->sin_addr.s_addr;
         buffer = (char *)malloc((len + 1) * sizeof(char));
+        if (buffer == NULL)
+        {
+            perror("error: cannot allocate memory for buffer\n");
+            close(conn->sock);
+            free(conn);
+            pthread_exit(0);
+        }
         buffer[len] = 0;
 
         /* read the message */
-        read(conn->sock, buffer, len);
+        if (read(conn->sock, buffer, len) <= 0)
+        {
+            printf("error: reading message failed\n");
+            free(buffer);
+            close(conn->sock);
+            free(conn);
+            pthread_exit(0);
+        }
 
-        /* Parsear el mensaje JSON recibido */
+        /* parse received message */
         cJSON *json_message = cJSON_Parse(buffer);
         if (json_message == NULL)
         {
@@ -75,8 +96,9 @@ void * process(void * ptr)
                 int response_len = strlen(json_response);
 
                 /* send response to the client */
-                write(conn->sock, &response_len, sizeof(int));
-                write(conn->sock, json_response, response_len);
+                if (write(conn->sock, &response_len, sizeof(int)) <= 0 ||
+                    write(conn->sock, json_response, response_len) <= 0)
+                    printf("error: sending response to client failed\n");
 
                 /* clear used memory */
                 cJSON_Delete(response);
@@ -84,7 +106,7 @@ void * process(void * ptr)
             }
             else
             {
-                printf("incomplete json message\n");
+                printf("incomplete JSON message\n");
             }
 
             /* clear memory used by JSON */
@@ -120,7 +142,7 @@ int main(int argc, char ** argv)
     else
     {
         printf("No port specified, standard port will be used: %d\n",
-               port);
+               STD_PORT);
     }
 
     /* create TCP socket */
@@ -148,12 +170,13 @@ int main(int argc, char ** argv)
         return LISTEN_ERROR;
     }
 
-    printf("%s: ready and listening\n", argv[0]);
+    printf("%s: ready and listening on port %d\n", argv[0], port);
 
     while (1)
     {
         /* accept connections */
         connection = (connection_t *)malloc(sizeof(connection_t));
+        connection->addr_len = sizeof(struct sockaddr_in); // initialize addr_len
         connection->sock = accept(sock, &connection->address, &connection->addr_len);
         if (connection->sock <= 0)
         {
