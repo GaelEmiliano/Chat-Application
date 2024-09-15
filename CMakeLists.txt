@@ -19,7 +19,10 @@ add_library(chat_actions STATIC src/common/chat_actions.c)
 target_include_directories(chat_actions PUBLIC src/common/include src/server/include lib/cjson)
 
 add_library(client_handler STATIC src/server/client_handler.c)
-target_include_directories(client_handler PUBLIC src/server/include)
+target_include_directories(client_handler PUBLIC src/server/include lib/cjson)
+
+add_library(client STATIC src/client/client.c)
+target_include_directories(client PUBLIC src/client/include lib/cjson)
 
 # Server build
 # The server source files are in the 'server' folder
@@ -30,10 +33,10 @@ target_link_libraries(server_app cjson chat_actions client_handler pthread)
 
 # Client build
 # The client source files are in the 'client' folder
-add_executable(client_app src/client/client.c)
+add_executable(client_app src/client/client_main.c src/client/client.c)
 
 # Link the necessary libraries to the client executable
-target_link_libraries(client_app cjson chat_actions pthread)
+target_link_libraries(client_app cjson chat_actions client pthread)
 
 # Installation instructions (optional)
 # You can add these if you want CMake to handle installation paths for the executables

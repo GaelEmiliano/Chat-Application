@@ -1,26 +1,10 @@
-#include <arpa/inet.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <pthread.h>
-#include <sys/socket.h>
-#include <linux/in.h>
-#include <unistd.h>
-#include "cJSON.h"
+#include "client_handler.h"
 
 #define STD_PORT 8080
-
 #define PORT_ERROR 1
 #define SOCKET_ERROR 2
 #define BIND_ERROR 3
 #define LISTEN_ERROR 4
-
-typedef struct
-{
-    int sock;
-    struct sockaddr address;
-    socklen_t addr_len;
-} connection_t;
 
 void * process(void * ptr)
 {
@@ -67,48 +51,18 @@ void * process(void * ptr)
         }
 
         /* parse received message */
-        cJSON *json_message = cJSON_Parse(buffer);
+        cJSON * json_message = cJSON_Parse(buffer);
         if (json_message == NULL)
-        {
             printf("error: error parsing client message\n");
-        }
         else
         {
-            cJSON *type = cJSON_GetObjectItem(json_message, "type");
-            cJSON *content = cJSON_GetObjectItem(json_message, "content");
-
-            if (type && content)
-            {
-                printf("message from: %d.%d.%d.%d: Type: %s, Content: %s\n",
-                       (int)((addr) &0xff),
-                       (int)((addr >> 8) &0xff),
-                       (int)((addr >> 16) &0xff),
-                       (int)((addr >> 24) &0xff),
-                       type->valuestring, content->valuestring);
-
-                /* create a response message */
-                cJSON *response = cJSON_CreateObject();
-                cJSON_AddStringToObject(response, "type", "response");
-                cJSON_AddStringToObject(response, "content", "received successfully");
-
-                /* convert JSON response to string */
-                char *json_response = cJSON_Print(response);
-                int response_len = strlen(json_response);
-
-                /* send response to the client */
-                if (write(conn->sock, &response_len, sizeof(int)) <= 0 ||
-                    write(conn->sock, json_response, response_len) <= 0)
-                    printf("error: sending response to client failed\n");
-
-                /* clear used memory */
-                cJSON_Delete(response);
-                free(json_response);
-            }
+            cJSON * type = cJSON_GetObjectItem(json_message, "type");
+            
+            if (type && strcmp(type->valuestring, "IDENTIFY") == 0)
+                handle_identify(conn, json_message);
             else
-            {
-                printf("incomplete JSON message\n");
-            }
-
+                printf("unknown message type\n");
+            
             /* clear memory used by JSON */
             cJSON_Delete(json_message);
         }
@@ -127,7 +81,7 @@ int main(int argc, char ** argv)
     int sock = -1;
     struct sockaddr_in address;
     int port = STD_PORT;
-    connection_t *connection;
+    connection_t * connection;
     pthread_t thread;
 
     /* check commandline */
@@ -184,7 +138,7 @@ int main(int argc, char ** argv)
         }
         else
         {
-            /* start new thread for conection */
+            /* start new thread for the conection */
             pthread_create(&thread, 0, process, (void *)connection);
             pthread_detach(thread);
         }
