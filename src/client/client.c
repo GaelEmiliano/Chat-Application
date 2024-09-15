@@ -7,6 +7,11 @@
 #include <stdlib.h>
 #include "cJSON.h"
 
+/*
+  define constants to improve readability
+*/
+#define BUFFER_SIZE 1024
+#define USERNAME_MAX_LEN 8
 #define USAGE_ERROR 1
 #define SOCKET_ERROR 2
 #define JSON_OBJECT_ERROR 3
@@ -18,14 +23,14 @@ int main(int argc, char ** argv)
     int port;
     int sock = -1;
     struct sockaddr_in address;
-    struct hostent *host;
+    struct hostent * host;
     int len;
-    char buffer[1024]; // save server response
+    char buffer[BUFFER_SIZE]; // save server response
     
     /* checking commandline parameter */
-    if (argc != 4)
+    if (argc != 3)
     {
-        printf("usage: %s | hostname | port | text\n", argv[0]);
+        printf("usage: %s | hostname | port\n", argv[0]);
         return USAGE_ERROR;
     }
 
@@ -60,7 +65,20 @@ int main(int argc, char ** argv)
         return HOST_NOT_FOUND;
     }
 
-    /* create object JSON */
+    /* request username from client */
+    char username[USERNAME_MAX_LEN + 1];
+    printf("Enter your username (max %d characters): ", USERNAME_MAX_LEN);
+    fgets(username, sizeof(username), stdin);
+    username[strcspn(username, "\n")] = 0; // remove new line
+
+    /* truncate username if it exceeds 8 characters */
+    if (strlen(username) > USERNAME_MAX_LEN)
+    {
+        username[USERNAME_MAX_LEN] = '\0';
+        printf("username too long, truncated to: %s\n", username);
+    }
+    
+    /* create IDENTIFY JSON object */
     cJSON * root = cJSON_CreateObject();
     if (!root)
     {
@@ -69,8 +87,8 @@ int main(int argc, char ** argv)
         return JSON_OBJECT_ERROR;
     }
     
-    cJSON_AddStringToObject(root, "type", "message");
-    cJSON_AddStringToObject(root, "content", argv[3]);
+    cJSON_AddStringToObject(root, "type", "IDENTIFY");
+    cJSON_AddStringToObject(root, "username", username);
 
     /* convert JSON to string */
     char * json_string = cJSON_Print(root);
@@ -82,7 +100,7 @@ int main(int argc, char ** argv)
         return JSON_OBJECT_ERROR;
     }
     
-    len = strlen(json_string);
+    len = strlen(json_string) + 1; // +1 for the null character
 
     /* send JSON message length to server */
     if (write(sock, &len, sizeof(int)) != sizeof(int))
@@ -108,45 +126,52 @@ int main(int argc, char ** argv)
     free(json_string);
     cJSON_Delete(root);
 
-    /* read server response length */
-    if (read(sock, &len, sizeof(int)) <= 0)
+    /* wait for server response */
+    while (1)
     {
-        fprintf(stderr, "%s: error: failed to read response length\n", argv[0]);
-        close(sock);
-        return RECEIVE_ERROR;
-    }
-
-    /* read server response */
-    if (read(sock, buffer, len) <= 0)
-    {
-        fprintf(stderr, "%s: error: failed to read response\n", argv[0]);
-        close(sock);
-        return RECEIVE_ERROR;
-    }
-    
-    buffer[len] = '\0'; // end received line
-
-    /* parse JSON response */
-    cJSON *response = cJSON_Parse(buffer);
-    if (response == NULL)
-        printf("error: error parsing server response\n");
-    else
-    {
-        cJSON *response_type = cJSON_GetObjectItem(response, "type");
-        cJSON *response_content = cJSON_GetObjectItem(response, "content");
-
-        if (response_type && response_content)
+        /* read server response length */
+        if (read(sock, &len, sizeof(int)) <= 0)
         {
-            printf("server response: Type: %s, Content: %s\n",
-                   response_type->valuestring, response_content->valuestring);
+            fprintf(stderr, "%s: error: failed to read response length\n", argv[0]);
+            close(sock);
+            return RECEIVE_ERROR;
         }
+        
+        /* read server response */
+        if (read(sock, buffer, len) <= 0)
+        {
+            fprintf(stderr, "%s: error: failed to read response\n", argv[0]);
+            close(sock);
+            return RECEIVE_ERROR;
+        }
+        
+        buffer[len] = '\0'; // end received line
+
+        /* parse JSON response */
+        cJSON * response = cJSON_Parse(buffer);
+        if (response == NULL)
+            printf("error: error parsing server response\n");
         else
         {
-            printf("invalid JSON response\n");
-        }
+            cJSON * response_type = cJSON_GetObjectItem(response, "type");
+            cJSON * request = cJSON_GetObjectItem(response, "request");
+            cJSON * result = cJSON_GetObjectItem(response, "result");
+            cJSON * extra = cJSON_GetObjectItem(response, "extra");
+                
+            if (response_type && request && result && extra)
+            {
+                printf("Server response: type: %s, request: %s, result: %s, extra: %s\n",
+                       response_type->valuestring,
+                       request->valuestring,
+                       result->valuestring,
+                       extra->valuestring);
+            }
+            else
+                printf("invalid JSON response\n");
 
-        /* clear memory */
-        cJSON_Delete(response);
+            /* clear memory */
+            cJSON_Delete(response);
+        }
     }
 
     /* close socket */
